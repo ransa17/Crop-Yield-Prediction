@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-// Translations
+
 const translations = {
   en: {
     title: 'AI Farming Platform',
@@ -112,7 +112,7 @@ const translations = {
   },
 };
 
-const apiKey = "AIzaSyCjFAHyFzSZdqSew1IA4UHspe18hRgMg1M";
+
 
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -129,7 +129,12 @@ function App() {
     soilMoisture: '',
   });
   const [prediction, setPrediction] = useState(null);
-  const [recommendations, setRecommendations] = useState(null);
+  const [recommendations, setRecommendations] = useState({
+    irrigation: null,
+    fertilization: null,
+    pestControl: null,
+  });
+   const [summaryRec, setSummaryRec] = useState(null);
   const [historicalData, setHistoricalData] = useState([]);
   const t = translations[language] || translations['en'];
 
@@ -185,26 +190,58 @@ function App() {
 
   const getRecommendation = async (inputData, predictedYield) => {
     try {
-      // You can replace this with your actual AI API call
-      setRecommendations(
-  `🌾 To improve your predicted yield of ${predictedYield.toFixed(2)} kg/hectare:
-  • Ensure timely irrigation based on crop stage and weather conditions.
-  • Apply a balanced NPK fertilizer tailored to soil test results.
-  • Regularly monitor for pests like aphids, borers, or fungal infections, and act promptly.`
-);
-    } catch {
-      setRecommendations(t.error);
+      // Connect to the new FastAPI backend API
+      const response = await fetch('http://127.0.0.1:8000/predict', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          crop_type: data.cropType,
+          region: data.region,
+          rainfall: parseFloat(data.rainfall),
+          temperature: parseFloat(data.temperature),
+          humidity: parseFloat(data.humidity),
+          soilPh: parseFloat(data.soilPh),
+          soilNitrogen: parseFloat(data.soilNitrogen),
+          soilMoisture: parseFloat(data.soilMoisture),
+          cropGrowthStage: data.cropGrowthStage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('API request failed with status ' + response.status);
+      }
+
+       const result = await response.json();
+      setPrediction(Math.floor(result.predicted_yield));
+      setRecommendations({
+        irrigation: result.irrigation_rec,
+        fertilization: result.fertilizer_rec,
+        pestControl: result.pest_control_rec,
+      });
+       setSummaryRec(result.summary_rec);
+    } catch (error) {
+      console.error('Prediction failed:', error);
+      setRecommendations({
+        irrigation: t.error,
+        fertilization: t.error,
+        pestControl: t.error,
+      });
+       setSummaryRec(t.error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const RecommendationCard = ({ icon, title, description, color }) => (
     <div className={`rec-card border-${color}`}>
-  <div className={`rec-title text-${color}`}>
-    {icon}
-    <h4>{title}</h4>
-  </div>
-  <p>{description}</p>
-</div>
+      <div className={`rec-title text-${color}`}>
+        {icon}
+        <h4>{title}</h4>
+      </div>
+      <p>{description || "No recommendation available."}</p>
+    </div>
   );
 
   const dashboardContent = (
@@ -249,29 +286,29 @@ function App() {
           </div>
         ) : (
           <div>
-            {recommendations && (
+             {summaryRec && (
               <div className="ai-recommend">
                 <span className="ai-label">{t.aiExpert}:</span>
-                <p>{recommendations}</p>
+                <p>{summaryRec}</p>
               </div>
             )}
             <div className="rec-grid">
               <RecommendationCard
                 icon={<Droplet size={20} />}
                 title={t.irrigation}
-                description="Ensure soil moisture levels are maintained between 40-60% during the critical flowering stage."
+                description={recommendations.irrigation || "No recommendation available."}
                 color="blue"
               />
               <RecommendationCard
                 icon={<Sprout size={20} />}
                 title={t.fertilization}
-                description="Apply a balanced NPK (15-15-15) fertilizer at a rate of 100kg per hectare at the start of the season."
+                description={recommendations.fertilization || "No recommendation available."}
                 color="green"
               />
               <RecommendationCard
                 icon={<Bug size={20} />}
                 title={t.pestControl}
-                description="Monitor for aphids and use a neem oil-based organic spray if infestation is detected."
+                description={recommendations.pestControl || "No recommendation available."}
                 color="red"
               />
             </div>
@@ -321,6 +358,22 @@ function App() {
             <option value="West">West</option>
           </select>
         </div>
+
+        <div >
+        <label htmlFor="cropGrowthStage">Crop Growth Stage</label>
+        <select
+          name="cropGrowthStage"
+          id="cropGrowthStage"
+          value={data.cropGrowthStage}
+          onChange={handleInputChange}
+        >
+          <option value="">Select stage</option>
+          <option value="Planting">Planting</option>
+          <option value="Vegetative">Vegetative</option>
+          <option value="Flowering">Flowering</option>
+          <option value="Harvest">Harvest</option>
+        </select>
+      </div>
         <div className="form-section">
           <h3>Weather & Soil Metrics</h3>
         </div>
